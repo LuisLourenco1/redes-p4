@@ -43,6 +43,8 @@ class Enlace:
     def __init__(self, linha_serial):
         self.linha_serial = linha_serial
         self.linha_serial.registrar_recebedor(self.__raw_recv)
+        self.res = b''
+        self.char = False
 
     def registrar_recebedor(self, callback):
         self.callback = callback
@@ -51,7 +53,19 @@ class Enlace:
         # TODO: Preencha aqui com o código para enviar o datagrama pela linha
         # serial, fazendo corretamente a delimitação de quadros e o escape de
         # sequências especiais, de acordo com o protocolo CamadaEnlace (RFC 1055).
-        pass
+        
+        ''' Passo 2 '''
+        if b'\xdb' in datagrama:
+            datagrama = datagrama.replace(b'\xdb', b'\xdb\xdd')
+        if b'\xc0' in datagrama:
+            datagrama = datagrama.replace(b'\xc0', b'\xdb\xdc')
+        
+        ''' Passo 1 '''
+        # Inserindo byte 0xC0 no começo e fim do datagrama
+        datagrama = b'\xc0' + datagrama + b'\xc0'
+        
+        # Enviando para a linha serial
+        self.linha_serial.enviar(datagrama)
 
     def __raw_recv(self, dados):
         # TODO: Preencha aqui com o código para receber dados da linha serial.
@@ -61,4 +75,28 @@ class Enlace:
         # vir quebrado de várias formas diferentes - por exemplo, podem vir
         # apenas pedaços de um quadro, ou um pedaço de quadro seguido de um
         # pedaço de outro, ou vários quadros de uma vez só.
-        pass
+
+        ''' Passo 3 '''
+        for d in dados:
+            if d == 0xC0: # Quando achar o byte 0xC0, envia para a camada superior
+                if self.res:
+                    ''' Passo 5 '''
+                    try:
+                        self.callback(self.res)
+                    except:
+                        import traceback
+                        traceback.print_exc()
+                    finally:
+                        self.res = b''
+            else:
+                ''' Passo 4 '''
+                if d == 0xDB: # Char de escape (0xDB 0xDD)
+                    self.char = True
+                
+                elif self.char: # Se for um char de escape
+                    if d == 0xDC: self.res += bytes([0xC0])
+                    if d == 0xDD: self.res += bytes([0xDB])
+                    self.char = False
+                
+                else:
+                    self.res += bytes([d])
